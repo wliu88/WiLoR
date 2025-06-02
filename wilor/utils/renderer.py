@@ -249,16 +249,19 @@ class Renderer:
 
     def vertices_to_trimesh(self, vertices, camera_translation, mesh_base_color=(1.0, 1.0, 0.9), 
                             rot_axis=[1,0,0], rot_angle=0, is_right=1):
-        # material = pyrender.MetallicRoughnessMaterial(
-        #     metallicFactor=0.0,
-        #     alphaMode='OPAQUE',
-        #     baseColorFactor=(*mesh_base_color, 1.0))
-        vertex_colors = np.array([(*mesh_base_color, 1.0)] * vertices.shape[0])
+        # Set color based on whether it's right or left hand
+        if isinstance(mesh_base_color, tuple):
+            if is_right:
+                mesh_base_color = (0.0, 1.0, 0.0)  # Green for right hand
+            else:
+                mesh_base_color = (1.0, 0.0, 0.0)  # Red for left hand
+        
+        # Add alpha channel for transparency (0.7)
+        vertex_colors = np.array([(*mesh_base_color, 0.7)] * vertices.shape[0])
         if is_right:
             mesh = trimesh.Trimesh(vertices.copy() + camera_translation, self.faces.copy(), vertex_colors=vertex_colors)
         else:
             mesh = trimesh.Trimesh(vertices.copy() + camera_translation, self.faces_left.copy(), vertex_colors=vertex_colors)
-        # mesh = trimesh.Trimesh(vertices.copy(), self.faces.copy())
         
         rot = trimesh.transformations.rotation_matrix(
                 np.radians(rot_angle), rot_axis)
@@ -347,15 +350,23 @@ class Renderer:
         renderer = pyrender.OffscreenRenderer(viewport_width=render_res[0],
                                               viewport_height=render_res[1],
                                               point_size=1.0)
-        # material = pyrender.MetallicRoughnessMaterial(
-        #     metallicFactor=0.0,
-        #     alphaMode='OPAQUE',
-        #     baseColorFactor=(*mesh_base_color, 1.0))
 
         if is_right is None:
             is_right = [1 for _ in range(len(vertices))]
 
-        mesh_list = [pyrender.Mesh.from_trimesh(self.vertices_to_trimesh(vvv, ttt.copy(), mesh_base_color, rot_axis, rot_angle, is_right=sss)) for vvv,ttt,sss in zip(vertices, cam_t, is_right)]
+        # Create meshes with transparency
+        mesh_list = []
+        for vvv, ttt, sss in zip(vertices, cam_t, is_right):
+            trimesh_obj = self.vertices_to_trimesh(vvv, ttt.copy(), mesh_base_color, rot_axis, rot_angle, is_right=sss)
+            mesh = pyrender.Mesh.from_trimesh(
+                trimesh_obj,
+                material=pyrender.MetallicRoughnessMaterial(
+                    metallicFactor=0.0,
+                    alphaMode='BLEND',
+                    baseColorFactor=(1.0, 0.0, 0.0, 0.7) if not sss else (0.0, 1.0, 0.0, 0.7)
+                )
+            )
+            mesh_list.append(mesh)
 
         scene = pyrender.Scene(bg_color=[*scene_bg_color, 0.0],
                                ambient_light=(0.3, 0.3, 0.3))
@@ -363,13 +374,11 @@ class Renderer:
             scene.add(mesh, f'mesh_{i}')
 
         camera_pose = np.eye(4)
-        # camera_pose[:3, 3] = camera_translation
         camera_center = [render_res[0] / 2., render_res[1] / 2.]
         focal_length = focal_length if focal_length is not None else self.focal_length
         camera = pyrender.IntrinsicsCamera(fx=focal_length, fy=focal_length,
                                            cx=camera_center[0], cy=camera_center[1], zfar=1e12)
 
-        # Create camera node and add it to pyRender scene
         camera_node = pyrender.Node(camera=camera, matrix=camera_pose)
         scene.add_node(camera_node)
         self.add_point_lighting(scene, camera_node)

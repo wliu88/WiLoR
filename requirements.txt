@@ -1,7 +1,7 @@
 numpy
 opencv-python
 pyrender
-pytorch-lightning
+pytorch-lightning==1.9.0
 scikit-image
 smplx==0.1.28
 yacs

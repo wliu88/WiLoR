@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 import json
 from typing import Dict, Optional
+from tqdm import tqdm
+import shutil
 
 from wilor.models import WiLoR, load_wilor
 from wilor.utils import recursive_to
@@ -42,7 +44,7 @@ def main():
     # Get all demo images ends with .jpg or .png
     img_paths = [img for end in args.file_type for img in Path(args.img_folder).glob(end)]
     # Iterate over all images in folder
-    for img_path in img_paths:
+    for img_path in tqdm(img_paths, desc="Processing images"):
         img_cv2 = cv2.imread(str(img_path))
         detections = detector(img_cv2, conf = 0.3, verbose=False)[0]
         bboxes    = []
@@ -53,7 +55,11 @@ def main():
             bboxes.append(Bbox[:4].tolist())
         
         if len(bboxes) == 0:
+            # print(f"No detections found for {img_path}")
+            # copy the original image to the output folder
+            shutil.copy(img_path, os.path.join(args.out_folder, os.path.basename(img_path)))
             continue
+
         boxes = np.stack(bboxes)
         right = np.stack(is_right)
         dataset = ViTDetDataset(model_cfg, img_cv2, boxes, right, rescale_factor=args.rescale_factor)
